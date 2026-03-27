@@ -2,7 +2,11 @@
 
 A PermissionRequest hook for [Claude Code](https://claude.ai/code) that auto-approves safe commands based on a policy file and logs every decision for review.
 
-Built to work alongside org-managed settings that set `allowManagedPermissionRulesOnly: true` - where your personal `allow` rules in `~/.claude/settings.json` are ignored, and every Bash command prompts for approval.
+**This is not a tool to bypass your org's security policy.** Org-managed `deny` and `ask` rules are enforced by Claude Code before this hook ever fires - `claude-guard` cannot override them. What it does is complement those guardrails by letting you define a personal allow-list for the safe, routine commands that would otherwise require constant manual approval.
+
+The problem it solves: when org settings set `allowManagedPermissionRulesOnly: true` without any `allow` rules, every Bash command prompts for approval. This leads to decision fatigue - and decision fatigue leads to blindly approving everything, which is worse than having no prompts at all. `claude-guard` lets you be deliberate about what gets auto-approved while logging every decision for audit.
+
+**With great power comes great responsibility.** Every action auto-approved by this tool runs under your identity. You are responsible for your policy - if it's too lax and something goes wrong, your name is on it. Start conservative, review your logs (`claude-guard review`), and broaden rules only as you build confidence. Better yet, ask Claude to run `claude-guard review` and discuss the findings with you - it can help spot rules that are too broad or suggest tighter alternatives.
 
 ## How it works
 
