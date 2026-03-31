@@ -52,8 +52,9 @@ func Run(args []string) error {
 		return nil
 	}
 
-	allowCount, skipCount := 0, 0
+	allowCount, skipCount, denyCount := 0, 0, 0
 	ruleHits := map[string]int{}
+	denyHits := map[string]int{}
 	unmatched := map[string]int{}
 
 	for _, e := range entries {
@@ -61,6 +62,9 @@ func Run(args []string) error {
 		case "allow":
 			allowCount++
 			ruleHits[e.Rule]++
+		case "deny":
+			denyCount++
+			denyHits[e.Rule]++
 		case "skip":
 			skipCount++
 			key := fmt.Sprintf("%s: %s", e.Tool, normalizeCmd(e.Input))
@@ -68,11 +72,24 @@ func Run(args []string) error {
 		}
 	}
 
-	fmt.Printf("Decisions (last %s): %d allow, %d skip\n\n", fmtDuration(since), allowCount, skipCount)
+	summary := fmt.Sprintf("Decisions (last %s): %d allow, %d skip", fmtDuration(since), allowCount, skipCount)
+	if denyCount > 0 {
+		summary += fmt.Sprintf(", %d deny", denyCount)
+	}
+	fmt.Println(summary)
+	fmt.Println()
 
 	if !unmatchedOnly && len(ruleHits) > 0 {
 		fmt.Println("Top rules:")
 		for _, kv := range sortedByCount(ruleHits) {
+			fmt.Printf("  %-45s %d hits\n", kv.key, kv.count)
+		}
+		fmt.Println()
+	}
+
+	if !unmatchedOnly && len(denyHits) > 0 {
+		fmt.Println("Denied:")
+		for _, kv := range sortedByCount(denyHits) {
 			fmt.Printf("  %-45s %d hits\n", kv.key, kv.count)
 		}
 		fmt.Println()

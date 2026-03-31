@@ -16,12 +16,14 @@ type Config struct {
 
 type Rules struct {
 	Allow []string `json:"allow"`
+	Deny  []string `json:"deny"`
 }
 
 // Loaded is a parsed, ready-to-evaluate policy.
 type Loaded struct {
-	LogPath string
-	rules   []parsedRule
+	LogPath    string
+	allowRules []parsedRule
+	denyRules  []parsedRule
 }
 
 type parsedRule struct {
@@ -65,20 +67,52 @@ func Load() (*Loaded, error) {
 
 	loaded := &Loaded{LogPath: logPath}
 	for _, raw := range cfg.Rules.Allow {
-		loaded.rules = append(loaded.rules, parseRule(raw))
+		loaded.allowRules = append(loaded.allowRules, parseRule(raw))
+	}
+	for _, raw := range cfg.Rules.Deny {
+		loaded.denyRules = append(loaded.denyRules, parseRule(raw))
 	}
 	return loaded, nil
 }
 
-// Match returns the first matching allow rule, or ("", false).
-func (l *Loaded) Match(toolName, input string) (string, bool) {
-	for _, r := range l.rules {
+// Result describes the outcome of a policy evaluation.
+type Result struct {
+	Decision string // "allow", "deny", or "skip"
+	Rule     string // the matching rule (empty for skip)
+}
+
+// Evaluate checks deny rules first, then allow rules.
+// Deny takes precedence: if both match, the request is denied.
+func (l *Loaded) Evaluate(toolName, input string) Result {
+	// Deny rules take precedence.
+	for _, r := range l.denyRules {
 		if r.toolName != toolName {
 			continue
 		}
 		if matchPattern(r.pattern, input) {
-			return r.raw, true
+			return Result{Decision: "deny", Rule: r.raw}
 		}
+	}
+
+	// Then check allow rules.
+	for _, r := range l.allowRules {
+		if r.toolName != toolName {
+			continue
+		}
+		if matchPattern(r.pattern, input) {
+			return Result{Decision: "allow", Rule: r.raw}
+		}
+	}
+
+	return Result{Decision: "skip"}
+}
+
+// Match returns the first matching allow rule, or ("", false).
+// Deprecated: use Evaluate for deny-aware matching.
+func (l *Loaded) Match(toolName, input string) (string, bool) {
+	res := l.Evaluate(toolName, input)
+	if res.Decision == "allow" {
+		return res.Rule, true
 	}
 	return "", false
 }

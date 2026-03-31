@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gantony/claude-guard/internal/decision"
@@ -52,37 +53,44 @@ func Run() error {
 		return nil
 	}
 
-	rule, matched := cfg.Match(in.ToolName, matchStr)
+	res := cfg.Evaluate(in.ToolName, matchStr)
 
 	entry := decision.Entry{
 		Timestamp: time.Now().UTC(),
 		Tool:      in.ToolName,
 		Input:     matchStr,
-		Decision:  "skip",
+		Decision:  res.Decision,
+		Rule:      res.Rule,
 		SessionID: in.SessionID,
-	}
-	if matched {
-		entry.Decision = "allow"
-		entry.Rule = rule
 	}
 
 	if err := decision.Log(cfg.LogPath, entry); err != nil {
 		fmt.Fprintf(os.Stderr, "[claude-guard] warning: log write failed: %v\n", err)
 	}
 
-	if matched {
-		fmt.Fprintf(os.Stderr, "[claude-guard] ALLOW  %s  (rule: %s)\n", truncate(matchStr, 60), rule)
+	label := strings.ToUpper(res.Decision)
+	switch res.Decision {
+	case "allow":
+		fmt.Fprintf(os.Stderr, "[claude-guard] %s  %s  (rule: %s)\n", label, truncate(matchStr, 60), res.Rule)
 		return json.NewEncoder(os.Stdout).Encode(Output{
 			HookSpecificOutput: HookSpecific{
 				HookEventName: "PermissionRequest",
 				Decision:      Decision{Behavior: "allow"},
 			},
 		})
+	case "deny":
+		fmt.Fprintf(os.Stderr, "[claude-guard] %s   %s  (rule: %s)\n", label, truncate(matchStr, 60), res.Rule)
+		return json.NewEncoder(os.Stdout).Encode(Output{
+			HookSpecificOutput: HookSpecific{
+				HookEventName: "PermissionRequest",
+				Decision:      Decision{Behavior: "deny"},
+			},
+		})
+	default:
+		fmt.Fprintf(os.Stderr, "[claude-guard] SKIP   %s  (no match)\n", truncate(matchStr, 60))
+		// Empty stdout = passthrough to normal terminal prompt.
+		return nil
 	}
-
-	fmt.Fprintf(os.Stderr, "[claude-guard] SKIP   %s  (no match)\n", truncate(matchStr, 60))
-	// Empty stdout = passthrough to normal terminal prompt.
-	return nil
 }
 
 // extractMatchString pulls the relevant string from tool_input for matching.
